@@ -445,9 +445,11 @@ class Resource
       @manifest_annotations = nil
     end
 
-    sig { override.params(_filename: Pathname).void }
-    def verify_download_integrity(_filename)
-      # We don't have a checksum, but we can at least try parsing it.
+    sig { override.params(filename: Pathname).void }
+    def verify_download_integrity(filename)
+      # Only a manifest fetched by digest has a checksum. Without one we can
+      # at least try parsing it.
+      super if checksum
       tab
     end
 
@@ -457,7 +459,7 @@ class Resource
 
       with_context(quiet: true) { verify_download_integrity(cached_download) }
       true
-    rescue Error
+    rescue Error, ChecksumMismatchError
       clear_cache
       false
     end
