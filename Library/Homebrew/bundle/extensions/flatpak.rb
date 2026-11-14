@@ -118,19 +118,7 @@ module Homebrew
           return packages_with_remotes if packages_with_remotes
 
           @packages_with_remotes = if (flatpak = package_manager_executable)
-            # List applications with their origin remote
-            # Using --app to filter applications only
-            # Using --columns=application,origin to get app IDs and their remotes
-            output = command_output(flatpak, args: ["list", "--app", "--columns=application,origin"])
-
-            packages = output.split("\n").filter_map do |line|
-              name, remote = line.strip.split("\t")
-              next if name.nil?
-
-              remote ||= "flathub"
-              { name:, remote:, remote_url: remote_urls[remote] }
-            end
-            packages.sort_by { |pkg| pkg[:name] }
+            installed_refs(flatpak, apps_only: true)
           end
           return [] if @packages_with_remotes.nil?
 
@@ -150,7 +138,28 @@ module Homebrew
           installed_packages = @installed_packages
           return installed_packages if installed_packages
 
-          @installed_packages = packages_with_remotes.dup
+          flatpak = package_manager_executable
+          return [] unless flatpak
+
+          # Extensions such as OBS plugins are runtimes, so list every installed ref, not just --app.
+          @installed_packages = installed_refs(flatpak, apps_only: false)
+        end
+
+        sig { params(flatpak: T.any(String, Pathname), apps_only: T::Boolean).returns(T::Array[Package]) }
+        def installed_refs(flatpak, apps_only:)
+          args = ["list"]
+          args << "--app" if apps_only
+          args << "--columns=application,origin"
+          output = command_output(flatpak, args:)
+
+          packages = output.split("\n").filter_map do |line|
+            name, remote = line.strip.split("\t")
+            next if name.nil?
+
+            remote ||= "flathub"
+            { name:, remote:, remote_url: remote_urls[remote] }
+          end
+          packages.sort_by { |pkg| pkg[:name] }
         end
 
         sig {
@@ -289,7 +298,7 @@ module Homebrew
           packages_with_remotes = T.let(@packages_with_remotes || [], T::Array[Package])
           packages_with_remotes << package
           @packages_with_remotes = packages_with_remotes
-          @installed_packages = packages_with_remotes.dup
+          @installed_packages = [*@installed_packages, package]
           @packages = packages_with_remotes.map { |pkg| pkg[:name] }
           true
         end
@@ -308,7 +317,7 @@ module Homebrew
           packages_with_remotes = T.let(@packages_with_remotes || [], T::Array[Package])
           packages_with_remotes << package
           @packages_with_remotes = packages_with_remotes
-          @installed_packages = packages_with_remotes.dup
+          @installed_packages = [*@installed_packages, package]
           @packages = packages_with_remotes.map { |pkg| pkg[:name] }
           true
         rescue ErrorDuringExecution

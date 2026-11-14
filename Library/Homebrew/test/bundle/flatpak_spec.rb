@@ -158,6 +158,38 @@ RSpec.describe Homebrew::Bundle::Flatpak do
     end
   end
 
+  describe "installed extensions" do
+    before do
+      described_class.reset!
+      allow(described_class).to receive_messages(package_manager_executable: Pathname("flatpak"), remote_urls: {})
+      allow(described_class).to receive(:command_output)
+        .with(Pathname("flatpak"), args: ["list", "--app", "--columns=application,origin"])
+        .and_return("com.example.App\tflathub\n")
+      allow(described_class).to receive(:command_output)
+        .with(Pathname("flatpak"), args: ["list", "--columns=application,origin"])
+        .and_return("com.example.App\tflathub\ncom.example.App.Plugin.Example\tflathub\n")
+    end
+
+    after do
+      described_class.reset!
+    end
+
+    it "counts an installed extension as installed" do
+      expect(described_class.package_installed?("com.example.App.Plugin.Example")).to be(true)
+    end
+
+    it "still counts an installed extension as installed after installing another app" do
+      allow(Homebrew::Bundle).to receive(:system).and_return(true)
+      expect(described_class.install!("com.example.Other")).to be(true)
+      expect(described_class.package_installed?("com.example.App.Plugin.Example")).to be(true)
+    end
+
+    it "keeps dump and cleanup to applications" do
+      expect(described_class.dump).to eq('flatpak "com.example.App"')
+      expect(described_class.cleanup_items([described_class.entry("com.example.App")])).to be_empty
+    end
+  end
+
   describe "cleanup" do
     test_each([false, nil]) do |result|
       it "continues after #{result.inspect} with the resolved executable and unchanged environment" do
